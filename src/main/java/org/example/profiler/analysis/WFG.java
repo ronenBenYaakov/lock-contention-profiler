@@ -21,9 +21,13 @@ public class WFG {
     private final Set<Long> onStack = new HashSet<>();
     private final List<List<Long>> sccs = new ArrayList<>();
 
+    private final List<List<Long>> deadBlockCache = new ArrayList<>();
+    public boolean deadBlockCacheValid = false;
+
     public void addThread(long threadId) {
         adjacencyList.putIfAbsent(threadId, ConcurrentHashMap.newKeySet());
         waitTimes.putIfAbsent(threadId, new ConcurrentHashMap<>());
+        deadBlockCacheValid = false;
     }
 
     public void addEdge(long srcThreadId, long tarThreadId, long durationMillis) {
@@ -34,6 +38,7 @@ public class WFG {
         waitTimes.get(srcThreadId).merge(tarThreadId, durationMillis, Long::sum);
         totalWaitTimeCache.merge(srcThreadId, durationMillis, Long::sum);
         ownerThreadsCache.add(tarThreadId);
+        deadBlockCacheValid = false;
     }
 
     public void removeThread(long threadId) {
@@ -51,6 +56,7 @@ public class WFG {
 
         ownerThreadsCache.clear();
         adjacencyList.values().forEach(ownerThreadsCache::addAll);
+        deadBlockCacheValid = false;
     }
 
     public List<List<Long>> detectCycles() {
@@ -142,5 +148,42 @@ public class WFG {
             sb.append("\n");
         }
         return sb.toString();
+    }
+
+    public void invalidateCaches() {
+        deadBlockCacheValid = false;
+    }
+
+    public List<List<Long>> getDeadBlocks() {
+        if (deadBlockCacheValid) return deadBlockCache;
+
+        deadBlockCache.clear();
+        Set<Long> visited = new HashSet<>();
+
+        for (Long threadId : adjacencyList.keySet()) {
+            if (!visited.contains(threadId)) {
+                List<Long> chain = new ArrayList<>();
+                exploreBlockedChain(threadId, visited, chain);
+                if (!chain.isEmpty()) deadBlockCache.add(chain);
+            }
+        }
+
+        deadBlockCacheValid = true;
+        return deadBlockCache;
+    }
+
+    private void exploreBlockedChain(Long threadId, Set<Long> visited, List<Long> chain) {
+        if (visited.contains(threadId)) return;
+        visited.add(threadId);
+
+        Set<Long> waitingOn = adjacencyList.getOrDefault(threadId, Collections.emptySet());
+        if (!waitingOn.isEmpty()) {
+            for (Long target : waitingOn) {
+                chain.add(threadId);
+                exploreBlockedChain(target, visited, chain);
+            }
+        } else {
+            chain.add(threadId);
+        }
     }
 }
