@@ -9,25 +9,36 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 
 @CrossOrigin(origins = "http://localhost:3000")
-@RestController
 @RequestMapping("/api/profiler")
+@RestController
 public class ProfilerController {
 
-    private final ContentionAnalyzer analyzer = new ContentionAnalyzer();
+    private final ProfilerService profilerService;
+
+    public ProfilerController(ProfilerService profilerService) {
+        this.profilerService = profilerService;
+    }
 
     @GetMapping("/stats")
-    public StatsResponse getStats() {
-        // 1️⃣ Get raw snapshots (you might already have a snapshot service)
-        List<ThreadSnapshot> snapshots = SnapshotService.getCurrentSnapshots();
+    public Map<String, Object> getStats() {
+        List<ThreadSnapshot> threads = profilerService.getThreadSnapshots();
 
-        // 2️⃣ Use ContentionAnalyzer to analyze locks
-        List<ContentionRecord> lockRecords = analyzer.generateContentionRecords(snapshots, 3);
+        int totalThreads = threads.size();
+        int totalLocks = threads.stream().mapToInt(ThreadSnapshot::getHeldLockCount).sum();
+        int blockedThreads = (int) threads.stream().filter(ThreadSnapshot::isBlocked).count();
 
-        // 3️⃣ Return as structured JSON
-        return new StatsResponse(snapshots, lockRecords);
+        Map<String, Object> response = new HashMap<>();
+        response.put("threads", threads);
+        response.put("totalThreads", totalThreads);
+        response.put("totalLocks", totalLocks);
+        response.put("blockedThreads", blockedThreads);
+
+        return response;
     }
 }

@@ -56,7 +56,10 @@ public class ThreadSnapshot {
     }
 
     public int getHeldLockCount() {
-        return lockedMonitors.size() + lockedSynchronizers.size();
+        int count = (lockedMonitors != null ? lockedMonitors.size() : 0)
+                + (lockedSynchronizers != null ? lockedSynchronizers.size() : 0)
+                + (lockWaitingOn != null ? 1 : 0);
+        return count;
     }
 
     @Override

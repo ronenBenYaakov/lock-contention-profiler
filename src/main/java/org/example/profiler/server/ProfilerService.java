@@ -1,57 +1,84 @@
 package org.example.profiler.server;
 
+import org.example.profiler.monitor.LockEvent;
+import org.example.profiler.monitor.LockType;
+import org.example.profiler.monitor.ThreadSnapshot;
 import org.springframework.stereotype.Service;
 
-import java.lang.management.*;
-import java.util.*;
-import java.util.stream.Collectors;
+import java.lang.management.ManagementFactory;
+import java.lang.management.ThreadInfo;
+import java.lang.management.ThreadMXBean;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 
 @Service
 public class ProfilerService {
 
-    private final ThreadMXBean threadMXBean;
+    private final ThreadMXBean threadMXBean = ManagementFactory.getThreadMXBean();
 
-    public ProfilerService() {
-        this.threadMXBean = ManagementFactory.getThreadMXBean();
-        this.threadMXBean.setThreadContentionMonitoringEnabled(true);
-    }
+    public List<ThreadSnapshot> getThreadSnapshots() {
+        ThreadInfo[] infos = threadMXBean.dumpAllThreads(true, true);
+        List<ThreadSnapshot> snapshots = new ArrayList<>();
 
-    public ProfilerSnapshot getSnapshot() {
-        ThreadInfo[] threadInfos = threadMXBean.dumpAllThreads(true, true);
+        for (ThreadInfo info : infos) {
+            // Create lock events for monitors
+            List<LockEvent> monitors = Arrays.stream(info.getLockedMonitors())
+                    .map(m -> new LockEvent(
+                            m.getClassName() + "@" + m.getIdentityHashCode(),
+                            m.getClassName(),
+                            LockType.MONITOR,
+                            info.getThreadId(),
+                            info.getThreadName(),
+                            new StackTraceElement[]{m.getLockedStackFrame()},
+                            System.currentTimeMillis(),
+                            false
+                    ))
+                    .toList();
 
-        List<ProfilerThread> threads = Arrays.stream(threadInfos)
-                .map(ti -> {
-                    ProfilerThread thread = new ProfilerThread();
-                    thread.setId(ti.getThreadId());
-                    thread.setName(ti.getThreadName());
-                    thread.setState(ti.getThreadState().name());
-                    thread.setBlockedTime(ti.getBlockedTime());
-                    thread.setLockName(ti.getLockName());
-                    return thread;
-                })
-                .collect(Collectors.toList());
+            // Create lock events for synchronizers
+            List<LockEvent> synchronizers = Arrays.stream(info.getLockedSynchronizers())
+                    .map(l -> new LockEvent(
+                            l.getClass().getName() + "@" + l.hashCode(),
+                            l.getClass().getName(),
+                            LockType.SYNCHRONIZER,
+                            info.getThreadId(),
+                            info.getThreadName(),
+                            new StackTraceElement[0],
+                            System.currentTimeMillis(),
+                            false
+                    ))
+                    .toList();
 
-        Map<String, ProfilerLock> locks = new HashMap<>();
-
-        for (ThreadInfo ti : threadInfos) {
-            if (ti.getLockName() != null) {
-                locks.computeIfAbsent(ti.getLockName(), k -> {
-                    ProfilerLock l = new ProfilerLock();
-                    l.setLockId(k);
-                    l.setLockType(ti.getLockInfo() != null ? ti.getLockInfo().getClassName() : "MONITOR");
-                    l.setContentionCount(0);
-                    return l;
-                }).setContentionCount(
-                        locks.get(ti.getLockName()).getContentionCount() + 1
+            // Lock the thread is waiting on (if any)
+            LockEvent waitingLock = null;
+            if (info.getLockName() != null) {
+                waitingLock = new LockEvent(
+                        info.getLockName(),
+                        info.getLockName(),
+                        LockType.SYNCHRONIZER, // assume SYNCHRONIZER
+                        info.getLockOwnerId(),
+                        info.getLockOwnerName(),
+                        new StackTraceElement[0],
+                        System.currentTimeMillis(),
+                        info.getThreadState() == Thread.State.BLOCKED
                 );
             }
+
+            ThreadSnapshot snapshot = new ThreadSnapshot(
+                    info.getThreadId(),
+                    info.getThreadName(),
+                    info.getThreadState(),
+                    info.getStackTrace(),
+                    monitors,
+                    synchronizers,
+                    waitingLock,
+                    System.currentTimeMillis()
+            );
+
+            snapshots.add(snapshot);
         }
 
-        ProfilerSnapshot snapshot = new ProfilerSnapshot();
-        snapshot.setThreads(threads);
-        snapshot.setLocks(new ArrayList<>(locks.values()));
-        snapshot.setTimestamp(System.currentTimeMillis());
-
-        return snapshot;
+        return snapshots;
     }
 }
