@@ -40,11 +40,11 @@ public class KafkaSnapshotProducer {
      */
     public void send(ThreadSnapshot snapshot) {
         ProducerRecord<String, ThreadSnapshot> record =
-                new ProducerRecord<>(topic, String.valueOf(snapshot.threadId()), snapshot);
+                new ProducerRecord<>(topic, String.valueOf(snapshot.getThreadId()), snapshot);
 
         producer.send(record, (metadata, exception) -> {
             if (exception != null) {
-                System.err.println("Failed to send snapshot for thread " + snapshot.threadId());
+                System.err.println("Failed to send snapshot for thread " + snapshot.getThreadId());
                 exception.printStackTrace();
             }
         });

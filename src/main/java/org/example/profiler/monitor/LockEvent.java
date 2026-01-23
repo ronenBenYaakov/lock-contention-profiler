@@ -1,15 +1,13 @@
 package org.example.profiler.monitor;
 
-import lombok.AccessLevel;
-import lombok.AllArgsConstructor;
-import lombok.Getter;
-import lombok.ToString;
+import lombok.*;
 import lombok.experimental.FieldDefaults;
 
 @Getter
-@FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
+@FieldDefaults(level = AccessLevel.PRIVATE)
 @AllArgsConstructor
 @ToString
+@Setter
 public class LockEvent {
 
     String lockId;

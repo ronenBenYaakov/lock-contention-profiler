@@ -38,17 +38,17 @@ public class LockContentionAccumulator {
      * Updates all metrics incrementally so that isConvoy() is O(1)
      */
     public void recordBlock(LockEvent lock, ThreadSnapshot prev, ThreadSnapshot curr) {
-        long delta = curr.sampleTime() - prev.sampleTime();
+        long delta = curr.getSampleTime() - prev.getSampleTime();
 
         // Update blocked threads info
-        blockedThreadIds.add(prev.threadId());
-        blockedThreadNames.add(prev.threadName());
+        blockedThreadIds.add(prev.getThreadId());
+        blockedThreadNames.add(prev.getThreadName());
 
         // Update timing metrics
         totalBlockedTime += delta;
         maxSingleBlock = Math.max(maxSingleBlock, delta);
         blockCount++;
-        lastTimestamp = Math.max(lastTimestamp, curr.sampleTime());
+        lastTimestamp = Math.max(lastTimestamp, curr.getSampleTime());
 
         int newOwnerCount = ownershipFrequency.merge(lock.getOwnerThreadId(), 1, Integer::sum);
 
@@ -56,7 +56,7 @@ public class LockContentionAccumulator {
 
         uniqueWaiterCount = blockedThreadIds.size();
 
-        StackTraceKey key = new StackTraceKey(List.of(prev.stackTrace()));
+        StackTraceKey key = new StackTraceKey(List.of(prev.getStackTrace()));
         blockingStacks.merge(key, 1, Integer::sum);
     }
 

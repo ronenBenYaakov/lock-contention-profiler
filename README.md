@@ -1,115 +1,173 @@
-Lock Contention Profiler - Feature Summary
-==========================================
+# Lock Contention Profiler - Backend
 
-1. Core Data Classes
--------------------
+**Real-time JVM lock analysis, convoy detection, and hot-lock monitoring using Spring Boot.**
 
-ThreadSnapshot:
-- threadId, threadName, threadState
-- stackTrace
-- lockedMonitors, lockedSynchronizers
-- lockWaitingOn
-- sampleTime
-Methods:
-- isBlocked()
-- getHeldLockCount()
-- toString()
+This backend collects JVM thread and lock snapshots, analyzes lock contention, and exposes REST APIs for a frontend dashboard or external monitoring tools.
 
-LockEvent:
-- lockId, lockName, lockType
-- ownerThreadId, ownerThreadName
-- stackTrace
-- acquiredTime
-- isContended
-Methods:
-- isOwned()
-- toString()
+---
 
-ContentionRecord:
-- lockId, lockName, lockType
-- owningThreadId, owningThreadName
-- blockedThreadIds, blockedThreadNames
-- blockCount, uniqueWaiterCount
-- totalBlockedTime, maxSingleBlock
-- ownershipFrequency, maxOwnership
-- lastTimestamp, blockingStacks
-Methods:
-- hasContention()
-- severityScore()
-- isConvoy()
-- toString()
+## Table of Contents
 
-LockContentionAccumulator:
-- Tracks ongoing lock contention
-- Fields: blockedThreadIds, blockedThreadNames, ownershipFrequency, totalBlockedTime, maxSingleBlock, blockCount, lastTimestamp, blockingStacks
+1. [Project Overview](#project-overview)
+2. [Core Data Classes](#core-data-classes)
+3. [Analytics & Monitoring](#analytics--monitoring)
+4. [Lock Hotness / Wave Analytics](#lock-hotness--wave-analytics)
+5. [Optimization Features](#optimization-features)
+6. [Thread / Lock Histories](#thread--lock-histories)
+7. [Algorithmic Improvements](#algorithmic-improvements)
+8. [Overall Time Complexity](#overall-time-complexity-per-session)
+9. [REST API Endpoints](#rest-api-endpoints)
+10. [Project Dependencies](#project-dependencies)
+11. [Running the Server](#running-the-server)
+12. [Optional Features](#optional-features)
+
+---
+
+## Project Overview
+
+- **Backend Framework**: Spring Boot 3.2.x
+- **Language**: Java 17+
+- Collects **JVM thread snapshots** and **lock events** in real-time.
+- Analyzes **lock contention**, **convoys**, and **hot locks** dynamically.
+- Exposes a **REST API** for frontend dashboards or external tools.
+
+---
+
+## Core Data Classes
+
+### ThreadSnapshot
+- Fields: `threadId`, `threadName`, `threadState`, `stackTrace`, `lockedMonitors`, `lockedSynchronizers`, `lockWaitingOn`, `sampleTime`
 - Methods:
-  - recordBlock(LockEvent lock, ThreadSnapshot prev, ThreadSnapshot curr)
-  - toRecord()
+    - `isBlocked()`
+    - `getHeldLockCount()`
+    - `toString()`
 
-HotLockRecord (extends LockRecord):
+### LockEvent
+- Fields: `lockId`, `lockName`, `lockType`, `ownerThreadId`, `ownerThreadName`, `stackTrace`, `acquiredTime`, `isContended`
+- Methods:
+    - `isOwned()`
+    - `toString()`
+
+### ContentionRecord
+- Fields: `lockId`, `lockName`, `lockType`, `owningThreadId`, `owningThreadName`, `blockedThreadIds`, `blockedThreadNames`, `blockCount`, `uniqueWaiterCount`, `totalBlockedTime`, `maxSingleBlock`, `ownershipFrequency`, `maxOwnership`, `lastTimestamp`, `blockingStacks`
+- Methods:
+    - `hasContention()`
+    - `severityScore()`
+    - `isConvoy()`
+    - `toString()`
+
+### LockContentionAccumulator
+- Tracks ongoing contention with dynamic updates.
+- Fields: blocked threads, ownership frequency, total blocked time, max single block, block count, last timestamp, blocking stacks
+- Methods:
+    - `recordBlock(LockEvent lock, ThreadSnapshot prev, ThreadSnapshot curr)`
+    - `toRecord()`
+
+### HotLockRecord
+- Extends `LockRecord` with metrics for hot locks
 - Fields: normalizedBlockedRatio, topHotStacks
-- toString() includes convoy status, normalized ratio, top stacks
+- Methods: `toString()` includes convoy status and top stack traces
 
-LockRecord (abstract):
-- Base class for lock records
+---
 
-2. Analytics & Monitoring Classes
----------------------------------
+## Analytics & Monitoring
 
-ContentionAnalyzer:
-- Methods: analyzeBlockedThreads, analyzeLockContention, analyzeHotLocks
-- Features: dynamic maxOwnership, convoy detection, sorted outputs
+### ContentionAnalyzer
+- Computes lock contention, aggregates statistics, and detects convoys.
+- Methods:
+    - `analyzeLockContention(Map<Long, ThreadHistory>)`
+    - `analyzeHotLocks(Map<String, LockHistory>, observationWindowMs)`
+    - `generateContentionRecords(List<ThreadSnapshot>)`
+    - `buildWaitForGraph(List<ThreadSnapshot>)`
+    - `detectDeadBlocks(WFG)`
+    - `aggregateStatistics(Map<Long, ThreadHistory>, Map<String, LockHistory>)`
 
-WaitForGraph (WFG):
-- Fields: adjacencyList, waitTimes, totalWaitTimeCache, ownerThreadsCache
-- Methods: addThread, addEdge, removeThread, getTotalWaitTime, getWaitTime, getOwnerThreads, detectCycles, toString
-- Optimizations: O(1) queries using caches
+### WaitForGraph (WFG)
+- Directed graph representing thread waits on locks
+- Supports O(1) queries for wait times and owner threads
+- Detects cycles using **Tarjan SCC** algorithm
 
-WaitForGraphBuilder:
-- buildWaitForGraph(List<ThreadSnapshot>)
-- Computes real wait durations using consecutive snapshots
+### WaitForGraphBuilder
+- Builds WFG from consecutive thread snapshots
+- Computes real wait durations per thread
 
-3. LockHotness / Wave Analytics
---------------------------------
-LockHotnessWave:
-- Represents each lock as A * sin(ownershipFrequency * x)
-- Sum of waves for system-wide lock hotness visualization
-- Used for hot lock detection and convoy prediction
+---
 
-4. Optimization Features
-------------------------
-- O(1) getTotalWaitTime & getWaitTime
-- O(1) getOwnerThreads
-- Dynamic maxOwnership
-- Real-time convoy detection (optional hooks)
+## Lock Hotness / Wave Analytics
+- **LockHotnessWave**: represents each lock as `A * sin(ownershipFrequency * x)`
+- Enables real-time hot lock detection, convoy prediction, and visualization
+
+---
+
+## Optimization Features
+- O(1) `isConvoy()` using dynamic maxOwnership
+- O(1) queries for wait times and owner threads
+- Priority queues for top-K locks/threads
 - Tarjan SCC for deadlock detection
-- HotLock analysis with normalized blocked ratios and top stack traces
+- HotLock analysis with normalized blocked ratios and top stacks
 
-5. Project Dependencies
------------------------
+---
+
+## Thread / Lock Histories
+- **ThreadHistory**: stores snapshots of a single thread over time
+- **LockHistory**: stores events for a lock over time
+- Used to compute blocked threads, hot locks, convoy detection, and contention stats
+
+---
+
+## Algorithmic Improvements
+| Feature | Old Complexity | Optimized Complexity |
+|---------|----------------|--------------------|
+| getTotalWaitTime(thread) | O(D) | O(1) cached |
+| getWaitTime(threadA, threadB) | O(1) | O(1) cached |
+| getOwnerThreads() | O(E) | O(1) cached |
+| isConvoy() | O(N per lock) | O(1) dynamic maxOwnership |
+| Deadlock detection | DFS per query | Tarjan SCC O(V+E) |
+| HotLock top-K sort | O(L log L) | Priority queue O(L log K) |
+| Record block updates | basic accumulation | dynamic maxOwnership update |
+
+---
+
+## Overall Time Complexity (per session)
+- `T` = # threads, `S` = snapshots per thread
+- `L` = # locks, `E` = events per lock
+- `W` = # wait-for edges
+
+| Method | Complexity |
+|--------|------------|
+| analyzeLockContention | O(T*S + L log L) |
+| analyzeHotLocks | O(L*E) |
+| buildWaitForGraph | O(T*S) |
+| generateContentionRecords | O(T*S + N log K) |
+| aggregateStatistics | O(T*S + L*E) |
+| detectDeadBlocks | O(T + W) |
+| **Overall** | O(T*S + L*E + W) |
+
+---
+
+## REST API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/profiler/stats` | GET | Returns the latest snapshot of threads, locks, and hot lock metrics |
+| `/api/profiler/threads` | GET | Returns full thread history |
+| `/api/profiler/locks` | GET | Returns full lock history |
+| `/actuator/health` | GET | Spring Boot health check |
+
+---
+
+## Project Dependencies
+- Java 17+
+- Spring Boot 3.2.x
 - Lombok
 - Guava (EventBus)
 - Jedis/Redis (optional for convoy cache)
 
-6. Thread / Lock Histories
---------------------------
-- ThreadHistory: stores snapshots
-- LockHistory: stores events
-- Used by analyzers for blocked threads, lock contention, hot locks, convoy metrics
+---
 
-7. Summary of Algorithmic Improvements
---------------------------------------
-Feature | Old Complexity | Optimized Complexity
---------|----------------|--------------------
-getTotalWaitTime(thread) | O(D) | O(1)
-getWaitTime(threadA, threadB) | O(1) | O(1)
-getOwnerThreads() | O(E) | O(1)
-isConvoy() | O(N per lock) | O(1) (dynamic maxOwnership)
-Deadlock detection | DFS per query | Tarjan SCC, O(V+E)
-Record block updates | basic accumulation | maxOwnership updated dynamically, hooks optional
+## Running the Server
 
-8. Pending / Optional Features
--------------------------------
-- Hook system to trigger convoy updates in Redis cache
-- LockHotnessWave aggregation for real-time visualization
-- Time-window normalization for hot lock metrics
+1. **Build the project**:
+
+```bash
+./mvnw clean package
