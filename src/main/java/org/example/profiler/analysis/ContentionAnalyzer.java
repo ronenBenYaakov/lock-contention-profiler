@@ -1,8 +1,8 @@
 package org.example.profiler.analysis;
 
+import org.example.profiler.agent.ProfilerStats;
 import org.example.profiler.monitor.HotLockRecord;
 import org.example.profiler.monitor.LockEvent;
-import org.example.profiler.monitor.LockType;
 import org.example.profiler.monitor.ThreadSnapshot;
 
 import java.util.*;
@@ -337,6 +337,39 @@ public class ContentionAnalyzer {
         stats.put("topHotLocks", topHotLocks);
 
         return stats;
+    }
+
+    public static ProfilerStats analyze(List<ThreadSnapshot> snapshots) {
+
+        Map<String, Integer> lockCounts = new HashMap<>();
+        int blockedThreads = 0;
+
+        for (ThreadSnapshot t : snapshots) {
+            if (t.isBlocked()) blockedThreads++;
+
+            for (LockEvent l : t.getLockedMonitors()) {
+                lockCounts.merge(l.getLockId(), 1, Integer::sum);
+            }
+            for (LockEvent l : t.getLockedSynchronizers()) {
+                lockCounts.merge(l.getLockId(), 1, Integer::sum);
+            }
+        }
+
+        List<LockStats> locks = new ArrayList<>();
+        for (var e : lockCounts.entrySet()) {
+            locks.add(new LockStats(
+                    e.getKey(),
+                    e.getValue()
+            ));
+        }
+
+        return new ProfilerStats(
+                snapshots.size(),
+                locks.size(),
+                blockedThreads,
+                snapshots,
+                locks
+        );
     }
 
 }

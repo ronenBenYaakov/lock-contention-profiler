@@ -1,15 +1,14 @@
 package org.example.profiler.server;
 
-import org.example.profiler.analysis.ContentionAnalyzer;
-import org.example.profiler.analysis.ContentionRecord;
+import lombok.RequiredArgsConstructor;
+import org.example.profiler.agent.ProfilerSampler;
+import org.example.profiler.agent.ProfilerStats;
 import org.example.profiler.monitor.ThreadSnapshot;
-import org.example.profiler.server.dto.StatsResponse;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -17,28 +16,34 @@ import java.util.Map;
 @CrossOrigin(origins = "http://localhost:3000")
 @RequestMapping("/api/profiler")
 @RestController
+@RequiredArgsConstructor
 public class ProfilerController {
 
-    private final ProfilerService profilerService;
-
-    public ProfilerController(ProfilerService profilerService) {
-        this.profilerService = profilerService;
-    }
+    private final SnapshotStore store;
 
     @GetMapping("/stats")
-    public Map<String, Object> getStats() {
-        List<ThreadSnapshot> threads = profilerService.getThreadSnapshots();
+    public Map<String, Object> stats() {
+        List<ThreadSnapshot> snapshots = store.all();
 
-        int totalThreads = threads.size();
-        int totalLocks = threads.stream().mapToInt(ThreadSnapshot::getHeldLockCount).sum();
-        int blockedThreads = (int) threads.stream().filter(ThreadSnapshot::isBlocked).count();
+        long totalThreads = snapshots.stream()
+                .map(ThreadSnapshot::getThreadId)
+                .distinct()
+                .count();
 
-        Map<String, Object> response = new HashMap<>();
-        response.put("threads", threads);
-        response.put("totalThreads", totalThreads);
-        response.put("totalLocks", totalLocks);
-        response.put("blockedThreads", blockedThreads);
+        long blockedThreads = snapshots.stream()
+                .filter(ThreadSnapshot::isBlocked)
+                .count();
 
-        return response;
+        long totalLocks = snapshots.stream()
+                .mapToLong(ThreadSnapshot::getHeldLockCount)
+                .sum();
+
+        return Map.of(
+                "timestamp", System.currentTimeMillis(),
+                "totalThreads", totalThreads,
+                "blockedThreads", blockedThreads,
+                "totalLocks", totalLocks,
+                "threads", snapshots
+        );
     }
 }

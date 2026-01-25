@@ -1,5 +1,10 @@
 package org.example.profiler.monitor;
 
+import java.lang.management.LockInfo;
+import java.lang.management.MonitorInfo;
+import java.lang.management.ThreadInfo;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 public class ThreadSnapshot {
@@ -60,6 +65,64 @@ public class ThreadSnapshot {
                 + (lockedSynchronizers != null ? lockedSynchronizers.size() : 0)
                 + (lockWaitingOn != null ? 1 : 0);
         return count;
+    }
+
+    public static ThreadSnapshot from(ThreadInfo info, long sampleTime) {
+
+        List<LockEvent> monitors = Arrays.stream(info.getLockedMonitors())
+                .map(m -> new LockEvent(
+                        m.getIdentityHashCode() + "",
+                        m.getClassName(),
+                        LockType.MONITOR,
+                        info.getThreadId(),
+                        info.getThreadName(),
+                        LockEvent.getLockedStackTrace(info),
+                        sampleTime,
+                        false
+                ))
+                .toList();
+
+        List<LockEvent> synchronizers = Arrays.stream(info.getLockedSynchronizers())
+                .map(s -> new LockEvent(
+                        s.getIdentityHashCode() + "",
+                        s.getClassName(),
+                        LockType.SYNCHRONIZER,
+                        info.getThreadId(),
+                        info.getThreadName(),
+                        null,
+                        sampleTime,
+                        false
+                ))
+                .toList();
+
+        LockEvent waitingOn = null;
+        LockInfo lock = info.getLockInfo();
+
+        if (lock != null) {
+            waitingOn = new LockEvent(
+                    lock.getIdentityHashCode() + "",
+                    lock.getClassName(),
+                    info.getThreadState() == Thread.State.BLOCKED
+                            ? LockType.MONITOR
+                            : LockType.SYNCHRONIZER,
+                    info.getLockOwnerId(),
+                    info.getLockOwnerName(),
+                    info.getStackTrace(),
+                    sampleTime,
+                    true
+            );
+        }
+
+        return new ThreadSnapshot(
+                info.getThreadId(),
+                info.getThreadName(),
+                info.getThreadState(),
+                info.getStackTrace(),
+                monitors,
+                synchronizers,
+                waitingOn,
+                sampleTime
+        );
     }
 
     @Override

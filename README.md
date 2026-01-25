@@ -33,6 +33,10 @@ This backend collects JVM thread and lock snapshots, analyzes lock contention, a
 
 ---
 
+![System Architecture](pic1.png)
+
+---
+
 ## Core Data Classes
 
 ### ThreadSnapshot
